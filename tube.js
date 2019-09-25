@@ -165,36 +165,145 @@ class Pipe {
         return vertexes;
     }
 
-    get innerCylinderVertexes() {
+    calculateFrontAnnulusNormals() {
+        let normals = []
+        let normal = this.calculateTriangleNormal(this.frontAnnulus.innerCirclePoints[0], this.frontAnnulus.outerCirclePoints[0], this.frontAnnulus.outerCirclePoints[1]);
+        for (let i = 0; i < numberOfSegments * 2 * 3; i++) {
+            normals.push(...normal);
+        }
+        return normals;
+    }
+
+    calculateBackAnnulusNormals() {
+        let normals = []
+        let normal = this.calculateTriangleNormal(this.backAnnulus.outerCirclePoints[0], this.backAnnulus.innerCirclePoints[0], this.backAnnulus.outerCirclePoints[1]);
+        for (let i = 0; i < numberOfSegments * 2 * 3; i++) {
+            normals.push(...normal);
+        }
+        return normals;
+    }
+
+    calculateTriangleNormal(firstTrianglePoint, secondTrianglePoint, thirdTrianglePoint) {
+        const vector1 = [firstTrianglePoint.x - thirdTrianglePoint.x,
+            firstTrianglePoint.y - thirdTrianglePoint.y,
+            firstTrianglePoint.z - thirdTrianglePoint.z];
+        const vector2 = [secondTrianglePoint.x - thirdTrianglePoint.x,
+            secondTrianglePoint.y - thirdTrianglePoint.y,
+            secondTrianglePoint.z - thirdTrianglePoint.z];
+
+        let normal = this.crossProduct(vector1, vector2);
+
+        return this.normalizeVector(normal);       
+    }
+
+    normalizeVector(vector) {
+        return vector.map((coordinate, index, vector) => 
+                coordinate / Math.sqrt((Math.pow(vector[0], 2) + Math.pow(vector[1], 2) + Math.pow(vector[2], 2))));
+    }
+
+    crossProduct(vector1, vector2) {
+        let result = [];
+        result.push((vector1[1] * vector2[2]) - (vector1[2] * vector2[1]));
+        result.push((vector1[2] * vector2[0]) - (vector1[0] * vector2[2]));
+        result.push((vector1[0] * vector2[1]) - (vector1[1] * vector2[0]));
+        return result;
+    }
+
+    get innerCylinderData() {
         let vertexes = [];
         this.innerCylinder.forEach((value) => {vertexes.push(value.x, value.y, value.z)});
-        return vertexes;
+        let normals = [];
+        for (let i = 0; i < numberOfSegments * 2 * 3; i++) {
+            normals.push(0, 0, 0);
+        }
+        return {
+            vertexes : vertexes,
+            normals : normals
+            };
     }
 
-    get outerCylinderVertexes() {
+    get outerCylinderData() {
         let vertexes = [];
         this.outerCylinder.forEach((value) => {vertexes.push(value.x, value.y, value.z)});
-        return vertexes;
+        let normals = [];
+        for (let i = 0; (i + 3) <= (2 * (numberOfSegments)-1); i=i+2) {
+            let normal = this.calculateTriangleNormal(this.outerCylinder[i], this.outerCylinder[i+2], this.outerCylinder[i+1]);           
+            normals.push(...normal, ...normal, ...normal);
+            normal = this.calculateTriangleNormal(this.outerCylinder[i+1], this.outerCylinder[i+2], this.outerCylinder[i+3]);
+            normals.push(...normal, ...normal, ...normal);
+
+        }
+        return {
+            vertexes : vertexes,
+            normals : normals
+            };
     }
 
-    get frontAnnulusVertexes() {
-        return this.calculateAnnulusVertexes(this.frontAnnulus);
+    get frontAnnulusData() {
+        let vertexes = this.calculateAnnulusVertexes(this.frontAnnulus);
+        let normals = this.calculateFrontAnnulusNormals();
+        return {
+                vertexes : vertexes,
+                normals : normals
+                };
     }
 
-    get backAnnulusVertexes() {
-        return this.calculateAnnulusVertexes(this.backAnnulus);
+    get backAnnulusData() {
+        let vertexes = this.calculateAnnulusVertexes(this.backAnnulus);
+        let normals = this.calculateBackAnnulusNormals();
+        return {
+                vertexes : vertexes,
+                normals : normals
+                };
     }
 
 }
 
 let actualXRotationAngle = 0;
 let actualYRotationAngle = 0;
+let actualDiameter = 150;
+let actualWallThickness = 20;
+let actualLength = 700;
 const canvas = document.querySelector('canvas');
+const internalDiameterInput = document.querySelector('input.internalDiameter');
+const wallThicknessInput = document.querySelector('input.wallThickness');
+const lengthInput = document.querySelector('input.length');
+
 let isClicked = false;
 canvas.onmousedown = () => isClicked = true;
 canvas.onmouseup = () => isClicked = false;
-canvas.onmousemove = (event) => {if (isClicked) {drawScene(event.movementX/50, event.movementY/50)};}
+canvas.onmousemove = (event) => {
+    if (isClicked) {
+        actualXRotationAngle += (event.movementY/50);
+        actualYRotationAngle += (event.movementX/50);
+        drawScene();
+    } 
+}
+canvas.onwheel = (event) => {
+        event.preventDefault();
+        actualDiameter = actualDiameter >= 0 ? actualDiameter + event.deltaY : 0;
+        internalDiameterInput.value = actualDiameter; 
+        drawScene();
+}
 
+internalDiameterInput.value = actualDiameter;
+internalDiameterInput.onchange = (event) => {
+    console.log('diameterChange');
+    actualDiameter = event.target.value;
+    drawScene();
+}
+
+wallThicknessInput.value = actualWallThickness;
+wallThicknessInput.onchange = (event) => {
+    actualWallThickness = event.target.value;
+    drawScene();
+}
+
+lengthInput.value = actualLength;
+lengthInput.onchange = (event) => {
+    actualLength = event.target.value;
+    drawScene();
+}
 
 const gl = canvas.getContext('webgl');
 
@@ -205,19 +314,27 @@ if (!gl) {
 const vertexShader = gl.createShader(gl.VERTEX_SHADER);
 gl.shaderSource(vertexShader, `
 attribute vec4 position;
-uniform vec2 resolution;
+attribute vec3 normal;
+uniform vec3 resolution;
 uniform mat4 rotationMatrix;
+varying vec3 outNormal;
 void main() {
-    vec4 rotatedPosition = rotationMatrix * vec4(position.xy/resolution, position.z, 1.0);
-    gl_Position = vec4(rotatedPosition.xyz, -rotatedPosition.z + 1.0);
+    vec4 rotatedPosition = rotationMatrix * vec4(position.xyz/resolution, 1.0);
+    gl_Position = vec4(rotatedPosition.xyz, -(rotatedPosition.z * 0.9) + 1.0);
+    outNormal = (rotationMatrix * vec4(normal, 1.0)).xyz;
 }
 `);
 gl.compileShader(vertexShader);
 
 const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
 gl.shaderSource(fragmentShader, `
+precision mediump float;
+varying vec3 outNormal;
+uniform vec3 reverseLight;
 void main() {
+    float brightness = dot(normalize(outNormal), reverseLight);
     gl_FragColor = vec4(1, 0, 0, 1);
+    gl_FragColor.x = gl_FragColor.x * brightness;
 }
 `);
 
@@ -228,46 +345,95 @@ gl.attachShader(program, fragmentShader);
 gl.linkProgram(program);
 
 const positionLocation = gl.getAttribLocation(program, 'position');
+const normalLocation = gl.getAttribLocation(program, 'normal');
 const rotationMatrixLocation = gl.getUniformLocation(program, 'rotationMatrix');
 const resolutionLocation = gl.getUniformLocation(program, 'resolution');
-
-const pipe = new Pipe(150, 20, 0.5);
-const buffer = gl.createBuffer();
-const partsOfPipe = [pipe.backAnnulusVertexes,
-                     pipe.innerCylinderVertexes,
-                     pipe.outerCylinderVertexes,
-                     pipe.frontAnnulusVertexes];
-
-drawScene(0, 0);
+const reverseLightLocation = gl.getUniformLocation(program, 'reverseLight');
 
 
+//--------------------------------------------------
+const normalBuffer = gl.createBuffer();
+const frontAnnulusNormals = [];
+for (let i = 0; i < 40 * 3; i++) {
+    frontAnnulusNormals.push(0, 0, 1);
+}
+const otherNormals = [];
+for (let i = 0; i < 40 * 3; i++) {
+    otherNormals.push(1, -10, -1);
+}
+const backAnnulusNormals = [];
+for (let i = 0; i < 40 * 3; i++) {
+    backAnnulusNormals.push(1, 0, -1);
+}
+// let normals = [frontAnnulusNormals, otherNormals, otherNormals, frontAnnulusNormals];
 
 
 
-function drawScene(yRotationAngle, xRotationAngle) {
-    actualYRotationAngle += yRotationAngle;
-    actualXRotationAngle += xRotationAngle;
-    let rotationMatrix = new Matrix4x4([1, 0, 0, 0,
-        0, 1, 0, 0,
-        0, 0, 1, 0,
-        0, 0, 0, 1])
+
+
+
+const positionBuffer = gl.createBuffer();
+
+
+
+
+
+let normalizedReverseLight = [1, 0, 1].map((coordinate, index, vector) => coordinate / Math.sqrt((Math.pow(vector[0], 2) + Math.pow(vector[1], 2) + Math.pow(vector[2], 2))));
+console.log("light" + normalizedReverseLight);
+drawScene(0, 0, 0);
+
+
+
+
+
+function drawScene() {
+    const pipe = new Pipe(Math.max(0, actualDiameter), Math.max(0, actualWallThickness), Math.max(0, actualLength));
+    const partsOfPipe = [pipe.backAnnulusData,
+        pipe.innerCylinderData,
+        pipe.outerCylinderData,
+        pipe.frontAnnulusData];
+        console.log(pipe.backAnnulusData.normals[0]);
+    let identityMatrix = [1, 0, 0, 0,
+                          0, 1, 0, 0,
+                          0, 0, 1, 0,
+                          0, 0, 0, 1]
+    let rotationMatrix = new Matrix4x4(identityMatrix)
         .rotateX(actualXRotationAngle)
         .rotateY(actualYRotationAngle)
         .rotateZ(0);
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    // 
+    gl.enable(gl.CULL_FACE);
+    // gl.enable(gl.DEPTH_TEST);
 
+    gl.useProgram(program);
+    gl.uniformMatrix4fv(rotationMatrixLocation, false, rotationMatrix.asArray());
+    gl.uniform3fv(resolutionLocation, [gl.canvas.width, gl.canvas.height, 1280]);
+    gl.uniform3fv(reverseLightLocation, normalizedReverseLight);
+
+let partNumber = 0;
     partsOfPipe.forEach((pipePart) =>{
-        gl.useProgram(program);
-        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pipePart), gl.STATIC_DRAW);
-
+        
+        if (partNumber < 2) {
+            gl.cullFace(gl.FRONT);
+        } else {
+            gl.cullFace(gl.BACK);
+        }
+        
         gl.enableVertexAttribArray(positionLocation);
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pipePart.vertexes), gl.STATIC_DRAW);               
         gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 0, 0);
+        
+        // console.log(normalizedReverseLight);
+        gl.enableVertexAttribArray(normalLocation);
+        gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pipePart.normals), gl.STATIC_DRAW);              
+        gl.vertexAttribPointer(normalLocation, 3, gl.FLOAT, false, 0, 0);       
 
-        gl.uniformMatrix4fv(rotationMatrixLocation, false, rotationMatrix.asArray());
-        gl.uniform2f(resolutionLocation, gl.canvas.width, gl.canvas.height);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, (20 + 1)*2);
+        partNumber++;
     })
 }
 // inner cylinder
